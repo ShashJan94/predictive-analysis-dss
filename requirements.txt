@@ -1,0 +1,17 @@
+click==8.3.0
+colorama==0.4.6
+h11==0.16.0
+lxml==6.0.2
+pycsp3==2.5.1
+uvicorn==0.38.0
+duckdb
+kaggle
+pandas
+scikit-learn
+sqlalchemy
+fastapi
+nest-asyncio
+nbformat
+notebook==6.5.4
+nbclient==0.5.16
+ipywidgets==8.1.1
