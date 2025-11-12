@@ -10,22 +10,3 @@ venv.bak/
 .idea/
 .vscode/
 .DS_Store
-
-# Python bytecode files
-*.py[cod]
-
-# Test and type-checker caches
-.pytest_cache/
-mypy_cache/
-
-# Virtual environment and env files
-.venv/
-.env
-
-# Distribution / packaging
-dist/
-build/
-*.egg-info/
-
-# C extension and shared objects
-*.so
