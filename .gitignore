@@ -10,3 +10,5 @@ venv.bak/
 .idea/
 .vscode/
 .DS_Store
+kaggle.json
+ipynb_checkpoints/

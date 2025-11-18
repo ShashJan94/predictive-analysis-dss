@@ -1,169 +1,320 @@
-## Notebook cell map (WSB-DSS.ipynb)
+# WSB Decision Support System
 
-Below is a cell-by-cell map of `WSB-DSS.ipynb`. Each item lists the cell index (1-based), a short summary of what that cell contains, and the primary functions or side-effects defined there. This makes it easy to find the health-audit and model functions used by the API.
+A full-stack decision support application that combines automated data health monitoring, predictive modeling, and NLP sentiment analysis through a unified web dashboard. Built with FastAPI and DuckDB, WSB-DSS orchestrates Jupyter notebook workflows to deliver reproducible analytics and model training pipelines for Airbnb Seattle datasets.
 
-1. Cell 1 — %pip install duckdb
-	- Installs `duckdb` (quiet pip install). The FastAPI runner intentionally skips `%pip install` lines when executing the notebook programmatically.
+## Overview
 
-2. Cell 2 — Imports & setup
-	- Standard imports (pandas, numpy, sklearn helpers, matplotlib, warnings, display options). Prepares environment variables and pandas display settings.
+WSB-DSS provides an interactive web interface for:
+- **Data Quality Monitoring** – Automated health checks and deep-dive diagnostics
+- **Predictive Modeling** – Regression, classification, clustering, and time-series forecasting
+- **NLP Analytics** – Multilingual sentiment analysis on customer reviews
+- **Artifact Management** – Centralized storage and retrieval of models, metrics, and visualizations
 
-3. Cell 3 — %pip install kaggle
-	- Installs `kaggle` (quiet pip install). Also skipped when the API executes the notebook subset.
+All analytics workflows are powered by `WSB-DSS.ipynb`, with the FastAPI backend (`app.py`) orchestrating selective cell execution to ensure consistency and reproducibility.
 
-4. Cell 4 — Kaggle dataset download helper
-	- Uses `KaggleApi` and a local `kaggle.json` (under `kaggle_key/`) to download `listings.csv`, `calendar.csv`, and `reviews.csv` into the `data/airbnb_seattle` folder if they are missing.
+---
 
-5. Cell 5 — CSV checks and data load
-	- Implements `check_csv()` to sanity-check required columns. Loads `listings`, `calendar`, and `reviews` into DataFrame variables and parses date columns. Prints dataset shapes.
+## Project Structure
 
-6. Cell 6 — Run tracking & artifact DB helpers
-	- Defines DuckDB path, `artifacts` root and DB helpers: `_con()`, `start_run()`, `end_run()`, `log_artifact()`, `latest_run()`, `runs_history()`.
+```
+WSB-DSS/
+├── app.py                      # FastAPI application with embedded dashboard
+├── WSB-DSS.ipynb               # Core analytics notebook (orchestrated by API)
+├── requirements.txt            # Python dependencies
+├── wsb_dss.duckdb              # DuckDB database (audit results, run history)
+├── README.md                   # This file
+├── artifacts/                  # Model outputs, metrics, plots
+│   ├── regression/
+│   ├── logistic/
+│   ├── kmeans/
+│   ├── forecast/
+│   └── nlp/
+├── data/
+│   └── airbnb_seattle/         # Input datasets
+│       ├── calendar.csv
+│       ├── listings.csv
+│       └── reviews.csv
+└── kaggle_key/
+    └── kaggle.json             # Kaggle API credentials (optional, gitignored)
+```
 
-7. Cell 7 — Audit tables & persist helpers
-	- Creates singleton tables for `health_checks` and `deep_dive_checks`. Defines `persist_health_audit()` and `persist_deep_dive_audit()` that write audit JSON and detail tables into DuckDB.
+---
 
-8. Cell 8 — Health audit function
-	- `run_health_audit(listings, calendar, reviews, verbose=True)` — core health check implementation producing a `{'metrics':..., 'tables':...}` dict. Computes shapes, missingness, duplicates, referential integrity, date ranges, price summaries and returns dataframes used by persistors.
+## Prerequisites
 
-9. Cell 9 — Deep-dive audit function
-	- `run_deep_dive_audit(...)` — deeper analysis (occupancy, gaps, review stats, neighborhood summaries) that returns structured `metrics` and `tables` for deep inspection.
+- **Python**: 3.10 or later
+- **Conda**: Recommended for environment management
+- **Kaggle API Key**: Optional (only if downloading datasets from Kaggle)
 
-10. Cell 10 — Run & persist audits
-	 - Example calls that run `run_health_audit(...)` and `persist_health_audit(...)`, then the deep-dive equivalent, and prints what was stored. Useful as a one-click run when working interactively.
+---
 
-11. Cell 11 — Regression training (HGB)
-	 - `train_regression_hgb(listings_df, reviews_df, ...)` — trains a HistGradientBoostingRegressor on log(price) and returns model, metrics, feature importance and predictions. Contains feature engineering and plotting options.
+## Installation & Setup
 
-12. Cell 12 — Logistic and KMeans utilities
-	 - `run_logistic_price_bucket(...)` — logistic pipeline for price-bucket classification and metrics/plots.
-	 - `run_kmeans_clusters(...)` — KMeans clustering helper and summaries.
-
-13. Cell 13 — Calendar forecaster
-	 - `run_calendar_forecast(calendar_df, ...)` — builds time-series features from calendar, trains an HGB forecaster, evaluates vs seasonal naive, and produces future forecasts + plots and holdout tables.
-
-14. Cell 14 — NLP sentiment scoring
-	 - `run_review_sentiment_nlp(reviews_df, ...)` — multilingual sentiment scoring (transformer fallback to VADER), returns scored reviews and rollups (per-listing summaries, monthly trend, overall%); also saves a small `overall_pct.json` artifact when persisted.
-
-15. Cell 15 — Filesystem helpers + persistors for models + examples
-	 - Filesystem helpers (save figures, outdir creation) and `persist_*_outputs` helpers for `regression`, `logistic`, `kmeans`, `forecast`, and `nlp` that save model artifacts, metrics and tables under `artifacts/<model_type>/<run_id>/` and log them in DuckDB. Contains minimal example end-to-end runs (calls training functions and persists outputs). Running this cell will create artifacts and DB rows.
-
-16. Cell 16 — Empty / placeholder
-	 - Blank cell at the end of the notebook (safe to ignore).
-
-Notes about the notebook and the API
-- The FastAPI `app.py` uses heuristics and tags to decide which cells to execute when `/api/health/run` is called:
-  - It looks for cell metadata tags `ui:health` (case-insensitive) and will include tagged cells deterministically.
-  - If no tags are present, it searches for load markers like `listings = pd.read_csv`, `def run_health_audit`, `persist_health_audit(` and runs up to the latest cell containing those markers.
-  - It automatically skips `%pip install` cells.
-  - The API injects a small snippet (calls `run_health_audit(...)` + `persist_health_audit(...)`) and runs the subset with `nbclient` so the web UI can call the endpoint without re-running the entire notebook.
-
-## How to use and modify the notebook & repo
-
-Read this section before editing the notebook or the API behavior.
-
-  1. Open `WSB-DSS.ipynb` in Jupyter or VS Code Notebook editor.
-  2. Run cells in order (or run the cells you modify). The example calls in Cell 15 will execute training and persist artifacts — comment them out if you do not want to run full experiments.
-
-  - Start the API: `uvicorn app:app --reload --host 127.0.0.1 --port 8000`.
-  - POST to `/api/health/run` (from the UI press "Check Health" or run `curl -X POST http://127.0.0.1:8000/api/health/run`). The app will run a conservative subset of the notebook and read the latest row from `wsb_dss.duckdb`.
-
-
-## Suggestions for `app.py` and calling specific notebook cells from the UI
-
-Below are safe, practical suggestions for improving `app.py` so the UI (or callers) can request that the server execute a specific set of notebook cells (by index), or a named tag. I include a small recommended server-side contract and example front-end JS and PowerShell requests you can use right away.
-
-Why this is useful
-- Running only a small set of notebook cells reduces runtime and risk when the notebook contains heavy training cells.
-- Allowing the UI to request specific cell indexes (or tags) makes the system predictable for reproducible health checks and developer testing.
-
-Design / contract suggestions (server-side)
-- Endpoint: Keep `POST /api/health/run` but accept an optional JSON body with either:
-	- `cell_indexes`: list of 1-based integer indexes (e.g., [2,5,7]) — OR —
-	- `tags`: list of metadata tag strings to include (e.g., ["ui:health"]).
-- Behavior:
-	- If `cell_indexes` provided: validate indexes (must be ints between 1 and number of cells). Convert to 0-based when selecting cells.
-	- Else if `tags` provided: include any cells whose metadata tags match (case-insensitive).
-	- Else: fall back to the current heuristic behavior (existing logic in `run_health_audit_notebook`).
-	- Always skip `%pip install` lines and never run cells that look like external installs.
-	- Optionally: enforce a whitelist of allowed indexes/tags (recommended in production) to prevent abuse.
-
-Security & safety notes
-- Do not allow arbitrary cells that perform heavy computations or external network calls unless you trust the caller.
-- Consider adding simple authentication for the endpoint (e.g., environment-token checked in a header) before allowing `cell_indexes` execution.
-- Log the selected indexes/tags and the user (if authenticated) for auditability.
-
-Suggested API request examples
-
-- Request using JSON body (POST) — call from PowerShell:
+### 1. Clone the Repository
 
 ```powershell
-$body = @{ cell_indexes = @(2,5,7) } | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/health/run -Body $body -ContentType 'application/json'
+git clone <repository-url>
+cd WSB-DSS
 ```
 
-- Request using JSON body (fetch from UI JS):
+### 2. Create Conda Environment
 
-```javascript
-fetch('/api/health/run', {
-	method: 'POST',
-	headers: { 'Content-Type': 'application/json' },
-	body: JSON.stringify({ cell_indexes: [2,5,7] })
-}).then(r => r.json()).then(console.log).catch(console.error)
+```powershell
+# Create new environment with Python 3.10
+conda create -n wsb-dss python=3.10 -y
+
+# Activate the environment
+conda activate wsb-dss
 ```
 
-Example: simple UI change
-- Add an input on the served HTML to accept a comma-separated list of cell indexes and pass it as JSON to `/api/health/run`. Example minimal change to the HTML's health button handler:
+### 3. Install Dependencies
 
-```javascript
-// read indexes from an input with id 'cellIndexesInput' (e.g., "2,5,7")
-const raw = document.getElementById('cellIndexesInput')?.value || '';
-const idxs = raw.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
-fetch('/api/health/run', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({cell_indexes: idxs}) })
-	.then(r => r.json()).then(d => { console.log(d); /* update UI */ });
+```powershell
+pip install -r requirements.txt
 ```
 
-Suggested server-side implementation sketch (safe, minimal change)
-- Modify `run_health_audit_notebook` to accept optional parameters `cell_indexes=None, tags=None` and make the selection procedure explicit:
-	1. Read notebook with `nbformat.read()`.
-	2. If `cell_indexes` is provided: convert to 0-based list and select only those cells (preserve order).
-	3. Else if `tags` provided: include all cells whose metadata tags contain any of the requested tags.
-	4. Else: use existing heuristic to pick the prefix.
-	5. As a final step append the injected snippet that calls `run_health_audit(...)` + `persist_health_audit(...)` if not already persisted by the notebook.
+The `requirements.txt` includes:
+- **FastAPI** – Web framework and API server
+- **Uvicorn** – ASGI server for FastAPI
+- **DuckDB** – Embedded analytics database
+- **pandas**, **numpy** – Data manipulation
+- **scikit-learn** – Machine learning algorithms
+- **matplotlib**, **seaborn** – Visualization
+- **transformers**, **torch** – NLP sentiment analysis
+- **nbformat**, **nbclient** – Notebook execution engine
+- **kaggle** – Dataset download (optional)
 
-Small pseudo-code (Python) to guide the change:
+### 4. Configure Kaggle Credentials (Optional)
 
+If you need to download datasets from Kaggle:
+
+1. Obtain your Kaggle API token from [kaggle.com/account](https://www.kaggle.com/account)
+2. Save `kaggle.json` in the `kaggle_key/` directory
+3. Set the environment variable:
+
+```powershell
+# PowerShell
+$env:KAGGLE_CONFIG_DIR = "$(Get-Location)\kaggle_key"
+```
+
+The notebook's Kaggle download cells will auto-detect this configuration.
+
+### 5. Verify Data Files
+
+Ensure the following files exist in `data/airbnb_seattle/`:
+- `calendar.csv`
+- `listings.csv`
+- `reviews.csv`
+
+If missing, either:
+- Download manually from [Kaggle Airbnb Seattle dataset](https://www.kaggle.com/airbnb/seattle)
+- Run the Kaggle download cells in `WSB-DSS.ipynb` (requires step 4)
+
+---
+
+## Running the Application
+
+### Start the FastAPI Server
+
+```powershell
+# From the project root directory
+uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**Options:**
+- `--host 0.0.0.0` – Accept connections from any network interface
+- `--port 8000` – Listen on port 8000
+- `--reload` – Auto-restart on code changes (development mode)
+
+### Access the Dashboard
+
+Open your browser and navigate to:
+- **Dashboard**: [http://127.0.0.1:8000](http://127.0.0.1:8000)
+- **API Documentation**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) (Swagger UI)
+
+---
+
+## Using the Dashboard
+
+### 1. Dataset Preview
+- Click **Show Data** to load a preview of the source CSV files
+- Toggle visibility with **Hide Data**
+- Displays the first 5 rows of each dataset
+
+### 2. Data Health Checks
+- Click **Check Health** to run automated quality audits:
+  - Row/column counts
+  - Missing value analysis
+  - Duplicate detection
+  - Referential integrity checks
+  - Date range validation
+- Results are stored in DuckDB and displayed in expandable tables
+
+### 3. Deep Dive Analysis
+- Click **Deep Dive** for advanced diagnostics:
+  - Occupancy rates by listing
+  - Price missingness patterns
+  - Review activity gaps
+  - Neighborhood-level summaries
+- Includes both summary metrics and detailed data tables
+
+### 4. Model Training
+1. **Select a model** from the dropdown:
+   - **Regression (HGB)** – Price prediction using HistGradientBoosting
+   - **Logistic Regression** – Price bucket classification
+   - **KMeans Clustering** – Listing segmentation
+   - **Calendar Forecast** – Time-series demand prediction
+   - **NLP Sentiment Analysis** – Review sentiment scoring
+
+2. Click **Train** to execute the model pipeline
+3. Monitor execution logs in the **Notebook Outputs** section
+4. View results in the **Model Outputs** panel:
+   - Performance metrics
+   - Visualizations (plots, charts)
+   - Downloadable artifacts (models, CSVs)
+
+### 5. Artifacts & Results
+- All model outputs are saved under `artifacts/<model_type>/<run_id>/`
+- The dashboard automatically displays the latest run
+- Click artifact links to download models, metrics JSON, or output files
+
+---
+
+## Architecture & Workflow
+
+### Notebook-Driven Execution
+- The FastAPI backend executes specific cells from `WSB-DSS.ipynb` based on the requested operation
+- Cell ranges are pre-defined in `app.py` (`MODEL_TRAIN_CELLS` dictionary)
+- Execution is serialized via threading locks to prevent conflicts
+
+### Cell Mapping Example
 ```python
-def run_health_audit_notebook(cell_indexes: list[int]|None=None, tags: list[str]|None=None):
-		nb = nbformat.read(NOTEBOOK_PATH, as_version=4)
-		if cell_indexes:
-				# convert 1-based (external) to 0-based
-				sel = [nb.cells[i-1] for i in cell_indexes if 1 <= i <= len(nb.cells)]
-		elif tags:
-				sel = [c for c in nb.cells if any(t.lower() in (x.lower() for x in c.get('metadata', {}).get('tags', [])) for t in tags)]
-		else:
-				# existing heuristic code that finds last_needed_idx
-				sel = nb.cells[:last_needed_idx+1]
-		# skip %pip install cells and append injected snippet
-		filtered = [c for c in sel if not ''.join(c.get('source','')).lstrip().startswith('%pip install')]
-		filtered.append(nbformat.v4.new_code_cell(post_snippet))
-		subset_nb = nbformat.v4.new_notebook(cells=filtered)
-		client = NotebookClient(subset_nb, timeout=900, allow_errors=True)
-		client.execute()
-		# inspect outputs and return
+MODEL_TRAIN_CELLS = {
+    "regression": [1, 4, 5, 6, 11, 15, 16],  # Import → Load → Train → Persist
+    "logistic":   [1, 4, 5, 6, 11, 12, 15, 17],
+    "kmeans":     [1, 4, 5, 6, 11, 12, 15, 18],
+    "forecast":   [1, 4, 5, 6, 13, 15, 19],
+    "nlp":        [1, 4, 5, 6, 14, 15, 20],
+}
 ```
 
-Notes about indexes vs tags
-- Indexes are deterministic but fragile: inserting or removing notebook cells changes indexes and UI callers must be updated.
-- Tags are stable and recommended for long-term use; for example add `ui:health` to cells required for the health run and then the UI can request the `tags=['ui:health']` option.
+### Data Flow
+1. User triggers action via dashboard
+2. FastAPI endpoint invokes `execute_notebook_cells()`
+3. Selected cells run in an isolated Jupyter kernel
+4. Outputs are captured and returned as JSON
+5. Artifacts are persisted to disk and logged in DuckDB
+6. Dashboard renders results and provides download links
 
-Automated change offer
-- I can implement the server-side change now (add optional `cell_indexes`/`tags` parsing to `POST /api/health/run` and wire it to `run_health_audit_notebook`). It's a small, localized change and I will include:
-	- Input validation (bounds checking and size limit, e.g., max 20 indexes),
-	- Logging the requested indexes/tags,
-	- A short note in the UI that shows which indexes were used.
+---
 
+## API Endpoints
 
-You can also tag the jupyter notebook cells and use the metadata to hook with the API and send commands from the UI. 
+### Core Endpoints
+- `GET /` – Serve web dashboard
+- `GET /api/models` – List available models
+- `POST /api/train/{model_id}` – Train a specific model
+- `GET /api/artifacts/{model_id}` – Retrieve latest artifacts
+- `GET /api/data/sample` – Preview dataset rows
 
+### Health & Diagnostics
+- `GET /api/health/latest` – Fetch cached health metrics
+- `POST /api/health/run` – Execute health audit notebook
+- `GET /api/deepdive/latest` – Fetch cached deep-dive results
+- `GET /api/deepdive/tables` – Retrieve detail tables
 
+### Artifact Files
+- `GET /artifacts/file/{model_id}/{run_id}/{filename}` – Download specific artifact
+
+Full API documentation: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
+---
+
+## Troubleshooting
+
+### Dashboard Not Loading
+- **Check server logs** for Python exceptions
+- **Verify port 8000** is not in use: `netstat -ano | findstr :8000`
+- **Clear browser cache** and reload
+
+### JavaScript Errors
+- Open browser DevTools (F12) → Console tab
+- Common issues: Syntax errors, failed fetch requests
+- Ensure the server is running and accessible
+
+### Notebook Execution Failures
+- **Review terminal output** for cell-level errors
+- **Verify data files** exist in `data/airbnb_seattle/`
+- **Check cell indices** in `app.py` match the notebook structure
+- **Validate dependencies** are installed: `pip list`
+
+### Missing Artifacts
+- Ensure the `artifacts/` directory has write permissions
+- Check that the model run completed without errors
+- Inspect DuckDB for run history: `SELECT * FROM runs;`
+
+### DuckDB Lock Errors
+- Only one operation can write to DuckDB at a time
+- Wait for ongoing tasks to complete before triggering new ones
+- Restart the server if locks persist
+
+### Kaggle Download Issues
+- Verify `kaggle.json` exists in `kaggle_key/`
+- Set `KAGGLE_CONFIG_DIR` environment variable
+- Check Kaggle API quota and credentials
+
+---
+
+## Development Notes
+
+### Modifying the Notebook
+1. Edit `WSB-DSS.ipynb` to update analytics logic
+2. Update cell indices in `app.py` if structure changes
+3. Test manually in Jupyter before deploying
+4. Restart uvicorn to pick up notebook changes
+
+### Adding New Models
+1. Create training function in a new notebook cell
+2. Add persistence logic in the artifacts helper cell
+3. Register the model in `MODELS` list in `app.py`
+4. Define cell execution range in `MODEL_TRAIN_CELLS`
+5. Test via API endpoint: `POST /api/train/{new_model_id}`
+
+### Database Schema
+The DuckDB database (`wsb_dss.duckdb`) stores:
+- **health_checks** – Audit metrics (JSON)
+- **deep_dive_checks** – Advanced diagnostics (JSON)
+- **runs** – Model execution history
+- **detail_deepdive_*** – Normalized detail tables
+
+Query examples:
+```sql
+-- View latest health check
+SELECT * FROM health_checks ORDER BY computed_at DESC LIMIT 1;
+
+-- List all model runs
+SELECT * FROM runs WHERE model_type = 'regression' ORDER BY end_time DESC;
+```
+
+---
+
+## Future Enhancements
+
+- [ ] Add user authentication for production deployment
+- [ ] Implement automated test suite (pytest)
+- [ ] Containerize with Docker for portable deployment
+- [ ] Add real-time logging stream to dashboard
+- [ ] Support concurrent notebook execution with job queuing
+- [ ] Integrate CI/CD pipeline for automated testing
+
+---
+
+## License
+
+This project is developed for academic purposes as part of the WSB University Decision Support Systems course.
+
+---
+
+## Contact & Support
+
+For questions, issues, or contributions, please open an issue in the repository or contact the development team.
